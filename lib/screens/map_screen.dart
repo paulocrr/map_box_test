@@ -14,9 +14,13 @@ class MapScreen extends StatefulWidget {
   State<MapScreen> createState() => _MapScreenState();
 }
 
-class _MapScreenState extends State<MapScreen> {
+class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   final placesService = PlacesService();
   final pageController = PageController();
+  final mapController = MapController();
+  late Place? currentPlace;
+  var selectedMarker = 0;
+  List<Place> result = [];
 
   @override
   Widget build(BuildContext context) {
@@ -47,9 +51,12 @@ class _MapScreenState extends State<MapScreen> {
               return Place.fromMap(data as Map<String, dynamic>);
             }).toList();
 
+            currentPlace = result.first;
+
             return Stack(
               children: [
                 FlutterMap(
+                  mapController: mapController,
                   options: MapOptions(
                     maxZoom: 18,
                     minZoom: 4,
@@ -98,11 +105,20 @@ class _MapScreenState extends State<MapScreen> {
                 Align(
                   alignment: Alignment.bottomCenter,
                   child: Container(
-                    height: 100,
+                    height: 88,
                     margin: const EdgeInsets.only(bottom: 32),
                     child: PageView.builder(
                       controller: pageController,
                       itemCount: result.length,
+                      onPageChanged: (index) {
+                        selectedMarker = index;
+                        currentPlace = result[index];
+                        _mapMove(
+                          currentPlace?.coordinates ??
+                              AppConstants.initialLocation,
+                          13,
+                        );
+                      },
                       itemBuilder: (context, index) {
                         final item = result[index];
 
@@ -136,5 +152,52 @@ class _MapScreenState extends State<MapScreen> {
         },
       ),
     );
+  }
+
+  void _mapMove(LatLng destination, double destinationZoom) {
+    final latTween = Tween<double>(
+      begin: mapController.center.latitude,
+      end: destination.latitude,
+    );
+
+    final lngTween = Tween<double>(
+      begin: mapController.center.longitude,
+      end: destination.longitude,
+    );
+
+    final zoomTween = Tween<double>(
+      begin: mapController.zoom,
+      end: destinationZoom,
+    );
+
+    final controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1000),
+    );
+
+    final animation = CurvedAnimation(
+      parent: controller,
+      curve: Curves.fastOutSlowIn,
+    );
+
+    controller.addListener(
+      () {
+        mapController.move(
+          LatLng(latTween.evaluate(animation), lngTween.evaluate(animation)),
+          zoomTween.evaluate(animation),
+        );
+      },
+    );
+
+    animation.addStatusListener(
+      (status) {
+        if (status == AnimationStatus.completed ||
+            status == AnimationStatus.dismissed) {
+          controller.dispose();
+        }
+      },
+    );
+
+    controller.forward();
   }
 }
